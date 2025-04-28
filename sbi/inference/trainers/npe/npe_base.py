@@ -44,6 +44,11 @@ from sbi.utils import (
 from sbi.utils.sbiutils import ImproperEmpirical, mask_sims_from_prior
 from sbi.utils.torchutils import assert_all_finite
 
+DEBUG = True
+def print_debug(msg):
+    if DEBUG:
+        print(f"[NPE debug]: {msg}")
+
 
 class PosteriorEstimator(NeuralInference, ABC):
     def __init__(
@@ -314,6 +319,7 @@ class PosteriorEstimator(NeuralInference, ABC):
             resume_training,
             dataloader_kwargs=dataloader_kwargs,
         )
+        print_debug(f"len(train_loader): {len(train_loader)} bs: {train_loader.batch_size}, len(val_loader): {len(val_loader)}, bs: {val_loader.batch_size}")
         # First round or if retraining from scratch:
         # Call the `self._build_neural_net` with the rounds' thetas and xs as
         # arguments, which will build the neural network.
