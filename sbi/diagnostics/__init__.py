@@ -4,7 +4,7 @@ from sbi.diagnostics.misspecification import (
     calc_misspecification_mmd,
 )
 from sbi.diagnostics.sbc import check_sbc, get_nltp, run_sbc
-from sbi.diagnostics.tarp import check_tarp, run_tarp
+from sbi.diagnostics.tarp import check_tarp, run_tarp, check_tarp_guy
 
 __all__ = [
     "check_sbc",

@@ -222,3 +222,42 @@ def check_tarp(
     kstest_pvals: float = kstest(ecp.numpy(), alpha.numpy())[1]  # type: ignore
 
     return atc, kstest_pvals
+
+def check_tarp_guy(
+    ecp: Tensor,
+    alpha: Tensor,
+) -> Tuple[float,float, float]:
+    r"""check the obtained TARP credibitlity levels and
+    expected coverage probabilities. This will help to uncover underdispersed,
+    well covering or overdispersed posteriors.
+
+    Args:
+        ecp: expected coverage probabilities computed with the TARP method,
+            i.e. first output of ``run_tarp``.
+        alpha: credibility levels $\alpha$, i.e. second output of ``run_tarp``.
+
+    Returns:
+        atc: area to curve, the difference between the ecp and alpha curve for
+            alpha values larger than 0.5. This number should be close to ``0``.
+            Values larger than ``0`` indicated overdispersed distributions (i.e.
+            the estimated posterior is too wide). Values smaller than ``0``
+            indicate underdispersed distributions (i.e. the estimated posterior
+            is too narrow). Note, this property of the ecp curve can also
+            indicate if the posterior is biased, see figure 2 of the paper for
+            details (https://arxiv.org/abs/2302.03026).
+        ks prob: p-value for a two sample Kolmogorov-Smirnov test. The null
+             hypothesis of this test is that the two distributions (ecp and
+             alpha) are identical, i.e. are produced by one common CDF. If they
+             were, the p-value should be close to ``1``. Commonly, people reject
+             the null if p-value is below 0.05!
+    """
+
+
+    # area to curve: difference between ecp and alpha above 0.5.
+    atc = (ecp - alpha).mean().item()
+    absolute_atc = (ecp - alpha).abs().mean().item()
+
+    # Kolmogorov-Smirnov test between ecp and alpha
+    kstest_pvals: float = kstest(ecp.numpy(), alpha.numpy())[1]  # type: ignore
+
+    return atc, absolute_atc, kstest_pvals

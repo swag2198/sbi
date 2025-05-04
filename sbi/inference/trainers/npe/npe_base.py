@@ -44,7 +44,7 @@ from sbi.utils import (
 from sbi.utils.sbiutils import ImproperEmpirical, mask_sims_from_prior
 from sbi.utils.torchutils import assert_all_finite
 
-DEBUG = True
+DEBUG = False
 def print_debug(msg):
     if DEBUG:
         print(f"[NPE debug]: {msg}")
@@ -233,6 +233,13 @@ class PosteriorEstimator(NeuralInference, ABC):
         retrain_from_scratch: bool = False,
         show_train_summary: bool = False,
         dataloader_kwargs: Optional[dict] = None,
+
+        # additional arguments for debugging
+        print_loss_every: int = 20,
+        eval_external_every: int = 20,
+
+        # external validation set
+        theta_ext=None, x_ext=None
     ) -> ConditionalDensityEstimator:
         r"""Return density estimator that approximates the distribution $p(\theta|x)$.
 
@@ -319,7 +326,7 @@ class PosteriorEstimator(NeuralInference, ABC):
             resume_training,
             dataloader_kwargs=dataloader_kwargs,
         )
-        print_debug(f"len(train_loader): {len(train_loader)} bs: {train_loader.batch_size}, len(val_loader): {len(val_loader)}, bs: {val_loader.batch_size}")
+        print_debug(f"len(train_loader): {len(train_loader)}, bs: {train_loader.batch_size}, len(val_loader): {len(val_loader)}, bs: {val_loader.batch_size}")
         # First round or if retraining from scratch:
         # Call the `self._build_neural_net` with the rounds' thetas and xs as
         # arguments, which will build the neural network.
@@ -349,6 +356,10 @@ class PosteriorEstimator(NeuralInference, ABC):
         if not resume_training:
             self.optimizer = Adam(list(self._neural_net.parameters()), lr=learning_rate)
             self.epoch, self._val_loss = 0, float("Inf")
+            # Initialize external validation loss storage if not already present
+            if "external_validation_loss" not in self._summary:
+                self._summary["external_validation_loss"] = []
+                self._summary["external_validation_epochs"] = []
 
         while self.epoch <= max_num_epochs and not self._converged(
             self.epoch, stop_after_epochs
@@ -373,7 +384,7 @@ class PosteriorEstimator(NeuralInference, ABC):
                     proposal,
                     calibration_kernel,
                     force_first_round_loss=force_first_round_loss,
-                )
+                ) # train_losses.shape: (batch_size,), so the loss is not reduced over the batch automatically
                 train_loss = torch.mean(train_losses)
                 train_loss_sum += train_losses.sum().item()
 
@@ -422,6 +433,26 @@ class PosteriorEstimator(NeuralInference, ABC):
             self._summary["epoch_durations_sec"].append(time.time() - epoch_start_time)
 
             self._maybe_show_progress(self._show_progress_bars, self.epoch)
+
+            # once in a while, print the train loss and val loss
+            # if self.epoch % print_loss_every == 0:
+            #     print(f"Epoch {self.epoch:4d} | train loss: {train_loss_average:10.6f} | val loss: {self._val_loss:10.6f} | dt: {1000*(time.time() - epoch_start_time):7.2f}ms")
+
+            if self.epoch % eval_external_every == 0:
+                # Evaluations on external validation set
+                if (theta_ext is not None) and (x_ext is not None):
+                    with torch.no_grad():
+                        ext_losses = self._neural_net.loss(theta_ext, x_ext)
+                    ext_loss = ext_losses.mean().item()  # Convert to Python scalar
+                    
+                    # Store the external validation loss
+                    self._summary["external_validation_loss"].append(ext_loss)
+                    self._summary["external_validation_epochs"].append(self.epoch)
+                    
+                    if self.epoch % print_loss_every == 0:
+                        print(f"Epoch {self.epoch:4d} | train loss: {train_loss_average:10.6f} | val loss: {self._val_loss:10.6f} | val loss (external): {ext_loss:10.6f} | dt: {1000*(time.time() - epoch_start_time):7.2f}ms")
+
+                # TODO: more evaluations here?: posterior predictive mse, c2st, calibration -- currently only do at the end.
 
         self._report_convergence_at_end(self.epoch, stop_after_epochs, max_num_epochs)
 
@@ -612,7 +643,7 @@ class PosteriorEstimator(NeuralInference, ABC):
             )
             x = reshape_to_batch_event(x, event_shape=self._neural_net.condition_shape)
             # Use posterior log prob (without proposal correction) for first round.
-            loss = self._neural_net.loss(theta, x)
+            loss = self._neural_net.loss(theta, x) # _neural_net is an NFlowsFlow object
         else:
             # Currently only works for `DensityEstimator` objects.
             # Must be extended ones other Estimators are implemented. See #966,

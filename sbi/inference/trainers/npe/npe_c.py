@@ -113,6 +113,12 @@ class NPE_C(PosteriorEstimator):
         retrain_from_scratch: bool = False,
         show_train_summary: bool = False,
         dataloader_kwargs: Optional[Dict] = None,
+
+        # additional arguments for debugging
+        print_loss_every: int = 10,
+        eval_external_every: int = 1,
+        # external validation set
+        theta_ext=None, x_ext=None
     ) -> nn.Module:
         r"""Return density estimator that approximates the distribution $p(\theta|x)$.
 
